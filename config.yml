@@ -1,0 +1,368 @@
+
+# -----------------------------------------------------------------
+# CS-MVP 配置文件 (实战优化版：分批/保本/TSL 调整 + 风控敏感度放宽)
+# -----------------------------------------------------------------
+
+strategy_version: "alpha-1"
+
+core:
+  tz: "Asia/Shanghai"
+  db_path: "/www/wwwroot/Crypto-Signal/app/trading_signals_core.db"
+  log_dir: "/www/wwwroot/Crypto-Signal/app/logs"
+  mode: "shadow"
+  allow_short: true
+  modes:
+    spot_only: false
+  spot_mirror:
+    window_grace_sec: 120
+    send_summary: true
+    notify_backend: auto
+
+  # ✅ pipeline 选项
+  pipeline:
+    max_buckets_per_run: 24     # 一次最多处理几个桶
+    backfill_hours: 12          # 回看窗口
+    reprocess_late: true        # 允许晚到信号触发已决策桶重跑
+
+  tests:
+    - BTC/USDT
+    - ETH/USDT
+    - BNB/USDT
+    - SOL/USDT
+    - XRP/USDT
+    - DOGE/USDT
+    - ADA/USDT
+    - TRX/USDT
+    - AVAX/USDT
+    - LINK/USDT
+    - DOT/USDT
+    - LTC/USDT
+    - NEAR/USDT
+    - SUI/USDT
+    - BCH/USDT
+    - APT/USDT
+    - UNI/USDT
+    - ETC/USDT
+    - ARB/USDT
+    - ATOM/USDT
+    - IMX/USDT
+    - AAVE/USDT
+    - FIL/USDT
+    - ICP/USDT
+    - HBAR/USDT
+    - ALGO/USDT
+    - SAND/USDT
+    - MANA/USDT
+    - CRV/USDT
+    - ENS/USDT
+    - INJ/USDT
+    - SUSHI/USDT
+    - THETA/USDT
+    - TON/USDT
+    - DYDX/USDT
+    - OP/USDT
+    - GALA/USDT
+
+  timeframes: ["1h", "4h"]
+
+  btc_symbols:
+    - "BTC/USDT"
+    - "BTCUSDT"
+    - "BTC-USD"
+    - "BTC/USDT:USDT"
+
+  limits:
+    bucket_open_cap: 7            # 单桶新开上限
+    portfolio_open_cap: 12        # ✅ 组合总持仓上限
+
+  # ✅ 更强替换更弱（不需要则关闭）
+  eviction:
+    enable: true
+    min_hold_minutes: 60
+    protect_be: true
+    protect_tp1: true
+    hysteresis_R: 0.15
+    min_edge_margin: 0.20
+
+  risk:
+    max_new_per_bucket: 7
+    max_R_per_bucket: 3.0
+    base_R_per_trade: 0.5
+    strong_signal_cutoff: 0.7
+
+  fees:
+    fee_bps: 7
+    slippage_bps: 8
+
+  candidates:
+    include_sources:
+      - chip_llm
+      - candle_llm
+      - triangle_raw
+      - sig_vpoc_flip
+      - sig_avwap_flip
+      - sig_confluence_reclaim   # ✅ 新增，共振回收
+      - sig_iar_revert           # ✅ 改名为 sig_*：IAR（日内AVWAP回归）
+      - sig_sqz_br               # 保留并确保后续真正入库
+
+  direction_policy:
+    prefer_top_source: true
+    require_consensus: true
+
+  btc_ctx:
+    timeframe: "1h"
+    recent_bars: 6
+    hist_bars: 24
+    drop_pct_threshold: -0.03
+    selloff_vol_ratio: 1.2
+
+  # 供 IAR / 共振回收 内部参考（若缺省则退回默认），不影响原有 BTC 对齐门
+  btc_alignment:
+    timeframe: "1h"
+    recent_bars: 6
+
+  # IAR / 共振回收 使用的放量窗口（只读 lookback）
+  volume_spike:
+    lookback_bars: 12
+
+  # ---------------------- 出场参数 ----------------------
+  exit: &EXIT
+    max_stale_minutes: 240
+    min_pnl_to_consider: 0.005
+    debug_r: true
+
+    partials:
+      levels_R: [0.45, 0.90, 1.50]
+      shares:   [0.20, 0.35, 0.45]
+      arm_tsl_after_tp_idx: -1
+      allow_chain_same_bar: true
+      chain_max_per_bar: 2
+
+    fees:
+      fee_bps: 7
+      slippage_bps: 8
+
+    break_even:
+      arm_at_R: 0.55
+      include_fees: true
+
+    sl:
+      atr_mult: { trending: 2.5, ranging: 1.5 }
+      use_structure: true
+
+    tsl:
+      method: chandelier
+      atr_mult: { trending: 3.0, ranging: 2.0 }
+      atr_len:  { trending: 14,  ranging: 10 }
+
+    tsl_stage_factor:
+      after_tp0: 1.00
+      after_tp1: 0.80
+      after_tp2: 0.60
+
+    context:
+      btc_mismatch_bars_half: 3
+      btc_mismatch_bars_flat: 5
+
+    time_stop:
+      max_bars_without_progress:
+        "1h": 48
+        "4h": 96
+      min_mfe_R: 0.60
+
+    struct_break:
+      use_value_area: true
+      confirm_bars: 1
+      prefer_weight_mode: full
+      debug: false
+  # -----------------------------------------------------
+
+  cooldown:
+    min_hold_minutes: 120
+
+  liquidity:
+    enable: true
+    lookback_bars: 8
+    min_notional_usd_1h: 150000
+    min_notional_usd_4h: 250000
+    vol_spike_ratio: 1.25
+
+  risk_cost:
+    enable: true
+    max_stop_frac: 0.05
+    min_reward_frac: 0.0125
+    rr_min: 1.7
+    stop_mult: 1.5
+    take_mult: 2.5
+    max_size_usd: 2000.0
+    rr_min_net: 1.3
+
+  fuses:
+    enabled: true
+    max_trades_per_day: 20
+    max_daily_loss_pct: 3.0
+    max_net_exposure_pct: 120.0
+    max_unrealized_drawdown_pct: 12.0
+
+  account:
+    equity_usd: 10000
+
+  feature_engineering:
+    chip_peak:
+      lookback: 90
+      min_window: 20
+      bin_method: fixed
+      bin_count: 50
+      bin_percentage: 0.005
+      price_split_count: 10
+      value_area:
+        pct: 0.70
+        weight_mode: full
+
+  # ---------------------- 三张王牌 + IAR + 共振回收 ----------------------
+  signals_rules:
+    vpoc_flip:
+      vol_spike_min: 1.6
+      rr_min: 1.8
+      take_mult: 2.5
+      atr_len: 14
+      vol_lookback: 24
+      vpoc_lookback_bars: 120
+      stop_buffer_atr: 0.2
+
+    avwap_flip:
+      vol_spike_min: 1.5
+      rr_min: 1.8
+      take_mult: 2.5
+      atr_len: 14
+      vol_lookback: 24
+      anchor: "weekly_open"
+      pivot_lookback: 50
+
+    sqz_br:
+      squeeze_lookback: 20
+      squeeze_pctile_max: 0.30
+      bb_width_norm_max: 3.0
+      vol_spike_min_long: 1.5
+      vol_spike_min_short: 1.6
+      rr_min: 2.0
+      take_mult: 2.5
+      atr_len: 14
+      vol_lookback: 24
+
+    # ✅ IAR（日内 AVWAP 回归，仅 LONG）
+    iar_revert:
+      # 震荡/收敛判定
+      bb_len: 20
+      bb_k: 2.0
+      bb_pctile_lookback: 120
+      bb_width_norm_max: 1.5
+      squeeze_pctile_max: 0.30
+
+      # 偏离与波动约束
+      atr_len: 14
+      dev_min_atr: 0.8            # 距 AVWAP 至少 0.8 ATR
+      atr_frac_max: 0.04          # ATR/close <= 4%
+
+      # 放量上限（IAR 只在“无明显放量”的震荡日）
+      vol_spike_cap: 1.25
+
+      # BTC 对齐：允许 flat / up
+      allow_btc_up: true
+
+      # 锚点
+      anchor: "weekly_open"
+      pivot_lookback: 50
+
+      # RR 口径（与 risk_cost 呼应）
+      rr_min: 1.8
+      take_mult: 2.2
+      stop_k: 0.5                  # 止损= min(prev_low, AVWAP - k*ATR)
+
+      # 仅做头部流动性（可按需增减）
+      restrict_symbols: ["BTC/USDT","ETH/USDT","SOL/USDT","BNB/USDT"]
+
+    # ✅ AVWAP ∧ VPOC 共振回收（LONG/SHORT 对称）
+    confluence_reclaim:
+      atr_len: 14
+      vol_lookback: 24
+      vpoc_lookback_bars: 120
+      anchor: "weekly_open"
+      pivot_lookback: 50
+
+      # “回收/收复”判定：与 AVWAP/VPOC 的接近阈值（单位 ATR）
+      near_k_atr: 0.60
+      reclaim_confirm_bars: 1
+
+      # 放量阈：过强放量视为趋势化，放弃均值回收
+      vol_spike_cap: 1.40
+
+      # BTC 对齐：允许 flat / up（做空侧由内部逻辑结合 breadth/risk_cost 再判）
+      allow_btc_up: true
+
+      # RR 及止损/目标（与风控口径一致）
+      rr_min: 1.9
+      take_mult: 2.4
+      stop_buffer_atr: 0.25       # 结构止损缓冲
+  # ----------------------------------------------------------------
+
+  thresholds:
+    signal:
+      chip_llm:     { metric: prob,     min: 0.6 }
+      candle_llm:   { metric: score,    min: 0.6 }
+      triangle_raw: { metric: score,    min: 0.6 }
+      chip_raw:     { metric: strength, min: 1.75 }
+      candle_raw:   { metric: strength, min: 1.75 }
+
+      # 三张牌阈值继续宽松，硬约束交给 volume_spike + risk_cost
+      sig_vpoc_flip:         { metric: score, min: 0.0 }
+      sig_avwap_flip:        { metric: score, min: 0.0 }
+      sig_sqz_br:            { metric: score, min: 0.0 }
+
+      # ✅ 新增：IAR 与 共振回收（注意：使用 source 名称）
+      sig_iar_revert:        { metric: score, min: 0.0 }
+      sig_confluence_reclaim: { metric: score, min: 0.0 }
+
+    breadth:
+      enforce: true
+      min_universe: 3
+      no_dominant_ratio_low: 0.80
+      no_dominant_ratio_high: 1.25
+      knife_block_long:
+        adv_vs_dec_ratio: 0.80
+      annotate_min_adv_ratio: 1.0
+      annotate_min_advancers_ratio: 0.50
+
+    btc_alignment:
+      enforce: true
+      reject_if_missing: true
+      min_align_score: 0.65
+      min_peak_corr_abs: 0.30
+      btc_alias:
+        - "BTC/USDT"
+        - "BTCUSDT"
+        - "BTC-USD"
+        - "BTC/USDT:USDT"
+
+    correlation_gate:
+      enable: true
+      when_no_portfolio: pass
+      abs_corr_scale_threshold: 0.80
+      abs_corr_block_threshold: 0.93
+
+    risk_gate:
+      taker_fee_bps: 7
+      slippage_bps_min: 3
+      slippage_bps_max: 15
+      notional_cap_usd: 1500
+
+    volume_spike:
+      enforce: true
+      min_spike_ratio: 1.25
+      lookback_bars: 12
+      debug: true
+
+# ---------------------- 根级镜像出场配置 ----------------------
+exit:
+  <<: *EXIT
+# -----------------------------------------------------------------
